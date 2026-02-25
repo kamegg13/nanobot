@@ -204,6 +204,7 @@ class ProviderConfig(Base):
     api_key: str = ""
     api_base: str | None = None
     extra_headers: dict[str, str] | None = None  # Custom headers (e.g. APP-Code for AiHubMix)
+    oauth_token: str = ""  # OAuth/subscription token (Bearer), alternative to api_key (e.g. CLAUDE_OAUTH_TOKEN)
 
 
 class ProvidersConfig(Base):
@@ -313,14 +314,14 @@ class Config(BaseSettings):
         for spec in PROVIDERS:
             p = getattr(self.providers, spec.name, None)
             if p and model_prefix and normalized_prefix == spec.name:
-                if spec.is_oauth or p.api_key:
+                if spec.is_oauth or p.api_key or p.oauth_token:
                     return p, spec.name
 
         # Match by keyword (order follows PROVIDERS registry)
         for spec in PROVIDERS:
             p = getattr(self.providers, spec.name, None)
             if p and any(_kw_matches(kw) for kw in spec.keywords):
-                if spec.is_oauth or p.api_key:
+                if spec.is_oauth or p.api_key or p.oauth_token:
                     return p, spec.name
 
         # Fallback: gateways first, then others (follows registry order)
