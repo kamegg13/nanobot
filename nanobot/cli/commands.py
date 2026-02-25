@@ -253,10 +253,27 @@ def _make_provider(config: Config):
 
     from nanobot.providers.registry import find_by_name
     spec = find_by_name(provider_name)
-    if not model.startswith("bedrock/") and not (p and p.api_key) and not (spec and spec.is_oauth):
+
+    # T003: Resolve OAuth token — env var takes priority over config file
+    oauth_token = os.environ.get("CLAUDE_OAUTH_TOKEN") or (p.oauth_token if p else "")
+
+    # T005: Accept oauth_token as valid credential (in addition to api_key and is_oauth)
+    if not model.startswith("bedrock/") and not (p and p.api_key) and not (spec and spec.is_oauth) and not oauth_token:
         console.print("[red]Error: No API key configured.[/red]")
-        console.print("Set one in ~/.nanobot/config.json under providers section")
+        console.print("Set CLAUDE_OAUTH_TOKEN env var or add providers.anthropic.oauthToken in ~/.nanobot/config.json")
         raise typer.Exit(1)
+
+    # T004: When OAuth token is present, inject Authorization: Bearer header
+    if oauth_token:
+        merged_headers = dict(p.extra_headers or {}) if p else {}
+        merged_headers["Authorization"] = f"Bearer {oauth_token}"
+        return LiteLLMProvider(
+            api_key="claude-oauth",  # placeholder to satisfy LiteLLM validation; ignored by Anthropic when Bearer is present
+            api_base=config.get_api_base(model),
+            default_model=model,
+            extra_headers=merged_headers,
+            provider_name=provider_name,
+        )
 
     return LiteLLMProvider(
         api_key=p.api_key if p else None,
@@ -1033,8 +1050,12 @@ def status():
                 else:
                     console.print(f"{spec.label}: [dim]not set[/dim]")
             else:
+                has_oauth = bool(p.oauth_token)
                 has_key = bool(p.api_key)
-                console.print(f"{spec.label}: {'[green]✓[/green]' if has_key else '[dim]not set[/dim]'}")
+                if has_oauth:
+                    console.print(f"{spec.label}: [green]✓ (OAuth)[/green]")
+                else:
+                    console.print(f"{spec.label}: {'[green]✓[/green]' if has_key else '[dim]not set[/dim]'}")
 
 
 # ============================================================================

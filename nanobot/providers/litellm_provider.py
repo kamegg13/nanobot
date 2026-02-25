@@ -225,9 +225,16 @@ class LiteLLMProvider(LLMProvider):
             response = await acompletion(**kwargs)
             return self._parse_response(response)
         except Exception as e:
-            # Return error as content for graceful handling
+            error_str = str(e)
+            # Surface a clear message when OAuth token authentication fails (HTTP 401)
+            is_oauth = (self.extra_headers or {}).get("Authorization", "").startswith("Bearer ")
+            if is_oauth and ("401" in error_str or "authentication" in error_str.lower() or "unauthorized" in error_str.lower()):
+                return LLMResponse(
+                    content="Authentication failed: OAuth token invalid or expired. Refresh your CLAUDE_OAUTH_TOKEN.",
+                    finish_reason="error",
+                )
             return LLMResponse(
-                content=f"Error calling LLM: {str(e)}",
+                content=f"Error calling LLM: {error_str}",
                 finish_reason="error",
             )
     
